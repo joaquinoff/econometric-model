@@ -1,0 +1,271 @@
+---
+title: "Formato"
+author: "Joaquin Perez"
+date: "2024-11-27"
+output:
+  word_document: default
+
+---
+
+```{r, message=FALSE, warning=FALSE}
+#install.packages("haven")
+#install.packages("psych")
+#install.packages("flextable")
+#install.packages("ggeffects")
+#install.packages("sjPlot")
+#install.packages("Rtools")
+#install.packages("lmtest")
+#install.packages("readxl")
+#install.packages("dplyr")
+#install.packages("car")
+#install.packages("corrplot")
+#install.packages("skedastic")
+#install.packages("tseries")
+#install.packages("nortest")
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(haven)
+library(psych)
+library(flextable)
+library(ggeffects)
+library(sjPlot)
+library(lmtest)
+library(readxl)
+library(dplyr)
+library(corrplot)
+library(skedastic)
+library(tidyverse)
+library(tseries)
+library(nortest)
+library(car)
+library(wooldridge)
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(sandwich)
+library(readxl)
+library(forecast)
+library(corrplot)
+library(skedastic)
+library(car)
+library(skedastic)
+library(estimatr)
+library(nortest)
+library(tidyverse)
+library(MASS)
+library(hettest)
+```
+
+## Importanción de base de datos
+
+```{r, message=FALSE, warning=FALSE}
+Data_nueva <- read_excel("C:\\Users\\DELL\\Documents\\DATA\\Nueva_base_datos.xlsx")
+```
+
+##Transformacion LOG
+```{r}
+Data_nueva <- Data_nueva %>% mutate(log_PBI = log(PBI),log_TD= log(TD))
+```
+
+
+#Transformacion BOXCOX
+```{r}
+lambda_optimo <- BoxCox.lambda(Data_nueva$TD)
+print(lambda_optimo)
+Data_nueva$TD_NUEVA <- BoxCox(Data_nueva$TD, lambda_optimo)
+```
+```{r}
+hist(Data_nueva$TD, main = "Distribución original")
+hist(Data_nueva$TD_NUEVA, main = "Distribución transformada")
+```
+
+
+
+## Estadística descriptiva
+
+```{r}
+resumen <- psych::describe(Data_nueva[, c("TD_NUEVA", "log_PBI", "VAR_IPC", "IP", "CT", "C19","TC","TI","CP")])[, c("mean", "sd", "min", "max")] %>% as.data.frame()
+tabla_descriptiva <- flextable(cbind(Variable = rownames(resumen), resumen)) %>% set_header_labels(mean = "Mean", sd = "Std. Dev.", min = "Min.", max = "Max.")
+tabla_descriptiva
+```
+
+## Estimación del Modelo
+
+```{r}
+Modelo_nuevo <- lm(TD_NUEVA ~  log_PBI + VAR_IPC  +IP + CT  + C19  + TC + TI + CP  , data = Data_nueva, na.action = na.exclude)
+summary(Modelo_nuevo)
+```
+
+## Formateo de tabla
+
+```{r}
+tab_model(Modelo_nuevo, show.ci = FALSE, p.style = "stars", dv.labels = "Modelo de Regresión de Informalidad", file = "modelo_regresion_informalidad.doc")
+```
+
+## Supuestos
+
+**Supuesto 1: Correcta Especificación**
+
+```{r}
+resettest(Modelo_nuevo)
+```
+## Formateo de tabla
+
+```{r}
+reset_result <- resettest(Modelo_nuevo)
+flextable(data.frame(Supuesto = "Correcta Especificación (RESET Test)", Estadístico = reset_result$statistic, p_value = reset_result$p.value)) %>% autofit()
+```
+
+
+**Supuesto 2: Multicolinealidad**
+
+1. Primera evaluación
+
+```{r}
+summary(Modelo_nuevo)
+```
+
+2. Segunda evaluación
+
+Selección de variables independientes.
+
+```{r}
+independientes <- Data_nueva[ c( "log_PBI", "VAR_IPC", "IP", "CT", "C19","TC","TI","CP")]
+```
+
+Visualización de correlaciones.
+
+```{r}
+cor(independientes)
+```
+
+```{r}
+mat_correlacion<-round(cor(independientes), 1)
+corrplot(mat_correlacion, method="number", type="upper")
+```
+
+
+## Formateo de tabla
+
+```{r}
+flextable(as.data.frame(cor(independientes, use = "complete.obs"))) %>% autofit()
+```
+
+
+3. Segunda evaluación
+
+```{r}
+Modelo1VIF <- lm(TD_NUEVA ~  log_PBI + VAR_IPC  +IP  + CT  + C19  + TC + TI + CP , data = Data_nueva)
+```
+
+```{r}
+vif(Modelo1VIF)
+```
+
+## Formateo de tabla
+
+```{r}
+vif_result <- vif(Modelo1VIF)
+flextable(data.frame(Variable = names(vif_result), VIF = vif_result)) %>% autofit()
+```
+
+
+**Supuesto 4: Homocedasticidad**
+
+**Test de Breusch-Pahan**
+
+```{r}
+bptest_result <- bptest(Modelo_nuevo)
+bptest_result
+```
+
+**Test de White**
+
+```{r}
+white_resultados <- white(Modelo_nuevo)
+white_resultados
+```
+
+## Formateo de tabla
+
+```{r}
+flextable(data.frame(Prueba = c("Breusch-Pagan", "White"), Estadístico = c(bptest_result$statistic, white_resultados$statistic), p_value = c(bptest_result$p.value, white_resultados$p.value))) %>% autofit()
+```
+
+**Supuesto 2: Normalidad de los residuales**
+
+```{r}
+Data_nueva$estimados <- fitted(Modelo_nuevo)
+Data_nueva$residuos <- residuals(Modelo_nuevo)
+```
+
+**Asimetría y Kurtorsis**
+
+```{r}
+jarque_bera_test <- jarque.bera.test(Data_nueva$residuos)
+jarque_bera_test
+```
+
+**Shapiro-Wilk**
+
+```{r}
+shapiro_test <- shapiro.test(Data_nueva$residuos)
+shapiro_test
+```
+
+**Shapiro-Sfrancia**
+
+```{r}
+shapiro_francia_test <- sf.test(Data_nueva$residuos)
+shapiro_francia_test
+```
+
+## Foramteo de tabla
+
+```{r}
+flextable(data.frame(Prueba = c("Jarque-Bera", "Shapiro-Wilk", "Shapiro-Francia"), Estadístico = c(jarque_bera_test$statistic, shapiro_test$statistic, shapiro_francia_test$statistic), p_value = c(jarque_bera_test$p.value, shapiro_test$p.value, shapiro_francia_test$p.value))) %>% autofit()
+```
+
+```{r}
+ggplot(Data_nueva, aes(x = estimados, y = TD_NUEVA)) +
+  geom_point(alpha = 0.24) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(title = "Recta de Regresión Lineal",
+       x = "Fitted",
+       y = "Informalidad")
+```
+
+```{r}
+Informalidad.ts<-ts(Data_nueva[,3], start=c(2003,1), frequency=12)
+
+```
+
+```{r}
+plot(Diff.Informalidad)
+```
+
+```{r}
+ndiffs(Diff.Informalidad)
+```
+```{r}
+Diff.Informalidad<-diff(Informalidad.ts)
+adf.test(Diff.Informalidad)
+```
+```{r}
+#numero de medias moviles
+acf(ts(Diff.Informalidad,frequency= 1))
+#numero de auto regresivos
+pacf(ts(Diff.Informalidad, frequency= 1))
+```
+```{r}
+modelo.arima=arima(Informalidad.ts,order=c(2,1,1))
+tsdiag(modelo.arima)
+```
+```{r}
+pronostico=forecast::forecast(modelo.arima,h=10)
+plot(pronostico)
+print(pronostico)
+```
+
